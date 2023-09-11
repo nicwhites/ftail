@@ -8,28 +8,47 @@ import (
 	"regexp"
 	"syscall"
 	"time"
+	"flag"
 )
 
+const USAGE = "Usage: ftail [-delay <time_delay>] <filename> <regex_pattern>\n" 
+const BUFFER_SIZE = 4096
+
 func main() {
-	if len(os.Args) != 3 {
-		fmt.Println("Usage: ftail <regex_pattern> <filename>")
+
+	var help bool
+
+    delay := flag.Int("delay", 100, "The time delay (ms) between file reads. Minimum is 1.")
+	flag.BoolVar(&help, "h", false, "Display program usage")
+
+	flag.Parse()
+
+	if help {
+		fmt.Fprintf(os.Stderr, USAGE)
+		flag.PrintDefaults()
+		os.Exit(0)
+	}
+
+	if flag.NArg() != 2 {
+		fmt.Fprintf(os.Stderr, USAGE)
 		os.Exit(1)
 	}
 
-	filename := os.Args[2]
-	regexPattern := os.Args[1]
+	regexPattern := flag.Arg(0)
+    filename := flag.Arg(1)
 
+    if (*delay <= 0 ) {
+        *delay = 1
+    }
 
-    sleep_time := 25 * time.Millisecond
+    time_delay := time.Duration(*delay)*time.Millisecond
 
-	// Compile the regex pattern
 	regex, err := regexp.Compile(regexPattern)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error compiling regex pattern: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Open the file for reading
 	file, err := os.Open(filename)
 	if err != nil {
 		fmt.Fprintf(os.Stderr,"Error opening the file: %v\n", err)
@@ -37,7 +56,6 @@ func main() {
 	}
 	defer file.Close()
 
-	// Get the initial file size
 	fileInfo, err := file.Stat()
 	if err != nil {
 		fmt.Fprintf(os.Stderr,"Error getting file info: %v\n", err)
@@ -46,33 +64,29 @@ func main() {
 	initialSize := fileInfo.Size()
 	currentPosition := initialSize
 
-	// Create a channel to receive termination signals (Ctrl+C)
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 
-	// Start a goroutine to periodically check and print matching new data
 	go func() {
-		buffer := make([]byte, 1024) // Adjust buffer size as needed
+		buffer := make([]byte, BUFFER_SIZE) 
 		for {
 			select {
 			case <-interrupt:
 				fmt.Println("Received termination signal. Exiting...")
 				return
 			default:
-				// Get the current file size
 				fileInfo, err := file.Stat()
 				if err != nil {
 					fmt.Printf("Error getting file info: %v\n", err)
-					time.Sleep(time.Second) // Wait before retrying
+					time.Sleep(time.Second) 
 					continue
 				}
 
-				// If the file size has increased, read and check for matching new data
 				if fileInfo.Size() > currentPosition {
 					n, err := file.ReadAt(buffer, currentPosition)
 					if err != nil && err != io.EOF {
 						fmt.Printf("Error reading file: %v\n", err)
-						time.Sleep(time.Second) // Wait before retrying
+						time.Sleep(time.Second) 
 						continue
 					}
 
@@ -86,12 +100,11 @@ func main() {
 					}
 				}
 
-				time.Sleep(sleep_time) // Adjust the check frequency as needed
+				time.Sleep(time_delay) 
 			}
 		}
 	}()
 
-	// Block the main goroutine until a termination signal is received
 	<-interrupt
 }
 
