@@ -107,7 +107,7 @@ func main() {
 
 					if len(newData) > 0 {
 						if regex.MatchString(newData) {
-							fmt.Printf("Matching data: %s", newData)
+							fmt.Printf(newData)
 
 							currentPosition = currentSize
 						}
