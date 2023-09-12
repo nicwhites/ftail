@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"io"
@@ -13,14 +12,14 @@ import (
 )
 
 const USAGE = "Usage: ftail [-delay <time_delay>] <regex_pattern> <filename>\n" 
+const BUFFER_SIZE = 1024
 
 func main() {
 
     // Flags 
-	var delay time.Duration
 	var help bool
 
-	flag.DurationVar(&delay, "delay", 100*time.Millisecond, "The time delay between file reads (ms)")
+    delay_int := flag.Int("delay", 100, "The time delay between file reads (ms)")
 	flag.BoolVar(&help, "h", false, "Display program usage")
 
 	flag.Parse()
@@ -35,6 +34,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, USAGE)
 		os.Exit(1)
 	}
+
+    delay := time.Duration(*delay_int) * time.Millisecond
 
 	regexPattern := flag.Arg(0)
 	filename := flag.Arg(1)
@@ -67,10 +68,11 @@ func main() {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
 
-	reader := bufio.NewReader(file)
 
 	go func() {
+        buffer := make([]byte, BUFFER_SIZE)
 		for {
+            
 			select {
 			case <-interrupt:
 				return
@@ -91,23 +93,23 @@ func main() {
 						fmt.Fprintf(os.Stderr, "Error reopening the file: %v\n", err)
 						os.Exit(1)
 					}
-
-					reader = bufio.NewReader(file)
 					currentPosition = currentSize
 					continue
 				}
 
 				if currentSize > currentPosition {
-					newData, err := reader.ReadString('\n')
+					n, err :=  file.ReadAt(buffer, currentPosition)
 					if err != nil && err != io.EOF {
 						fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
 						time.Sleep(delay)
 						continue
 					}
 
-					if len(newData) > 0 {
-						if regex.MatchString(newData) {
-							fmt.Printf(newData)
+					if n > 0 {
+                        newData := buffer[:n]
+                        currentPosition += int64(n)
+						if regex.Match(newData) {
+							fmt.Printf("%s", newData)
 
 							currentPosition = currentSize
 						}
