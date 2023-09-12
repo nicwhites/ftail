@@ -11,21 +11,24 @@ import (
 	"time"
 )
 
-const USAGE = "Usage: ftail [-delay <time_delay>] <regex_pattern> <filename>\n" 
+const USAGE = "Usage: ftail [OPTIONS] <regex_pattern> <filename>\n" 
 const BUFFER_SIZE = 1024
+const DEFAULT_DELAY = 100
 
 func main() {
 
     // Flags 
 	var help bool
 
-    delay_int := flag.Int("delay", 100, "The time delay between file reads (ms)")
+    delay_int := flag.Int("delay", DEFAULT_DELAY, "The time delay between file reads (ms)")
+    buffer_size := flag.Int("buffer", BUFFER_SIZE, "Buffer size for messages")
 	flag.BoolVar(&help, "h", false, "Display program usage")
 
 	flag.Parse()
 
 	if help {
 		fmt.Fprintf(os.Stderr, USAGE)
+        fmt.Println("OPTIONS: ")
 		flag.PrintDefaults()
 		os.Exit(0)
 	}
@@ -70,7 +73,7 @@ func main() {
 
 
 	go func() {
-        buffer := make([]byte, BUFFER_SIZE)
+        buffer := make([]byte, *buffer_size)
 		for {
             
 			select {
@@ -85,6 +88,8 @@ func main() {
 				}
 
 				currentSize := fileInfo.Size()
+
+                // Log rotation took place. Re-open the file in order to get new changes
 				if currentSize < currentPosition {
 					file.Close()
 					f, err := os.Open(filename)
@@ -97,6 +102,7 @@ func main() {
 					continue
 				}
 
+                // Things were added to the file. Best get to checking them
 				if currentSize > currentPosition {
 					n, err :=  file.ReadAt(buffer, currentPosition)
 					if err != nil && err != io.EOF {
